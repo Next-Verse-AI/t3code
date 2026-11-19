@@ -1375,6 +1375,28 @@ describe("DesktopUpdates under a managed policy", () => {
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
+  it.effect("updates without a feed when the updater has its own update source", () => {
+    const withoutFeed = { env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" } };
+    const sourceHarness = makeHarness({ ...withoutFeed, ownsFeed: true });
+    const plainHarness = makeHarness(withoutFeed);
+
+    return Effect.gen(function* () {
+      const configuredState = (harness: ReturnType<typeof makeHarness>) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const updates = yield* DesktopUpdates.DesktopUpdates;
+            yield* updates.configure;
+            return yield* updates.getState;
+          }),
+        ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+
+      assert.equal((yield* configuredState(sourceHarness)).status, "idle");
+      const plain = yield* configuredState(plainHarness);
+      assert.equal(plain.status, "disabled");
+      assert.include(plain.message ?? "", "no update feed is configured");
+    });
+  });
+
   it.effect("refuses the nightly channel without nightly", () => {
     const harness = makeHarness({ policy: managed({ allowNightly: false }) });
 

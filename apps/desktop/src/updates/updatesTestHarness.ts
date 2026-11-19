@@ -44,6 +44,8 @@ export interface UpdatesHarnessOptions {
   readonly savedChannel?: DesktopAppSettings.DesktopSettings["updateChannel"];
   /** Adds a WSL backend beside the primary, as on a Windows host with WSL enabled. */
   readonly wslBackend?: boolean;
+  /** An updater with its own update source, such as T3 Code Custom's SourceUpdater. */
+  readonly ownsFeed?: boolean;
 }
 
 export function makeHarness(options: UpdatesHarnessOptions = {}) {
@@ -76,6 +78,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   };
 
   const layerUpdater = Layer.succeed(ElectronUpdater.ElectronUpdater, {
+    ...(options.ownsFeed === undefined ? {} : { ownsFeed: options.ownsFeed }),
     setFeedURL: (options) =>
       Effect.sync(() => {
         feedUrls.push(options);
