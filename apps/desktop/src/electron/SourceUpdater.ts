@@ -154,8 +154,10 @@ export function makeSourceUpdater(
     setChannel: Effect.fn("SourceUpdater.setChannel")(function* () {}),
     setAllowPrerelease: Effect.fn("SourceUpdater.setAllowPrerelease")(function* () {}),
     allowDowngrade: Effect.sync(() => allowDowngrade),
-    setAllowDowngrade: Effect.fn("SourceUpdater.setAllowDowngrade")(function* (value) {
-      allowDowngrade = value;
+    setAllowDowngrade: Effect.fn("SourceUpdater.setAllowDowngrade")(function (value) {
+      return Effect.sync(() => {
+        allowDowngrade = value;
+      });
     }),
     setFullChangelog: Effect.fn("SourceUpdater.setFullChangelog")(function* () {}),
     setDisableDifferentialDownload: Effect.fn("SourceUpdater.setDisableDifferentialDownload")(
