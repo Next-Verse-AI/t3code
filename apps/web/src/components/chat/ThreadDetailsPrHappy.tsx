@@ -1,5 +1,11 @@
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, PullRequestDetail, PullRequestRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestDetail,
+  PullRequestRef,
+  QaLedgerStatus,
+  QaLedgerSummary,
+} from "@t3tools/contracts";
 import { useGT } from "gt-react";
 import { ScanSearchIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
@@ -7,7 +13,12 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { cn } from "~/lib/utils";
 import { pullRequestEnvironment } from "~/state/pullRequests";
-import { useEnvironmentQueryRefresh, useEnvironmentQuerySelector } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
+import {
+  useEnvironmentQuery,
+  useEnvironmentQueryRefresh,
+  useEnvironmentQuerySelector,
+} from "~/state/query";
 
 import { pullRequestPanelReference } from "../pullRequest/usePullRequestDetail";
 import { Spinner } from "../ui/spinner";
@@ -17,10 +28,10 @@ import {
   type ChecksSummary,
   type ConductorReview,
   type FindingPriority,
-  type QaLevel,
+  isSameCommit,
   summarizeChecks,
   summarizeConductorReview,
-  summarizeQa,
+  summarizeQaLedger,
 } from "./prHappy.logic";
 
 const ACTIVITY_REFRESH_MS = 2 * 60_000;
@@ -36,7 +47,11 @@ const TONE = {
 type Tone = keyof typeof TONE;
 
 /** Arcs drawn clockwise from the top, each a share of the full circle. */
-function Ring({ arcs }: { arcs: ReadonlyArray<{ readonly share: number; readonly tone: Tone }> }) {
+function Ring({
+  arcs,
+}: {
+  arcs: ReadonlyArray<{ readonly share: number; readonly className: string }>;
+}) {
   const starts = arcs.map((_, index) =>
     arcs.slice(0, index).reduce((sum, arc) => sum + arc.share * RING_CIRCUMFERENCE, 0),
   );
@@ -64,7 +79,7 @@ function Ring({ arcs }: { arcs: ReadonlyArray<{ readonly share: number; readonly
             strokeWidth="2.25"
             strokeDasharray={`${length} ${RING_CIRCUMFERENCE - length}`}
             strokeDashoffset={-(starts[index] ?? 0)}
-            className={cn("stroke-current", TONE[arc.tone])}
+            className={cn("stroke-current", arc.className)}
           />
         );
       })}
@@ -144,10 +159,10 @@ function ChecksRow({
       icon={
         <Ring
           arcs={[
-            { share: share(counts.successful), tone: "success" },
-            { share: share(counts.failing), tone: "failure" },
-            { share: share(counts.pending + counts.actionRequired), tone: "pending" },
-            { share: share(counts.skipped + counts.neutral), tone: "muted" },
+            { share: share(counts.successful), className: TONE.success },
+            { share: share(counts.failing), className: TONE.failure },
+            { share: share(counts.pending + counts.actionRequired), className: TONE.pending },
+            { share: share(counts.skipped + counts.neutral), className: TONE.muted },
           ]}
         />
       }
@@ -166,53 +181,105 @@ function ChecksRow({
   );
 }
 
+// The QA report's status colours, in its worst-to-best order.
+const QA_STATUS_TONE = {
+  not_run: "text-qa-not-run",
+  waiting: "text-qa-waiting",
+  blocked: "text-qa-blocked",
+  fail: "text-qa-fail",
+  partial: "text-qa-partial",
+  pass: "text-qa-pass",
+  out_of_scope: "text-qa-out-of-scope",
+} as const satisfies Record<QaLedgerStatus, string>;
+const QA_RING_ORDER = ["pass", "partial", "fail", "blocked", "waiting", "not_run"] as const;
+
 function QaRow({
-  qa,
+  ledger,
   loading,
-  onOpen,
+  headSha,
 }: {
-  qa: QaLevel | null;
+  ledger: QaLedgerSummary | null;
   loading: boolean;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+  headSha: string | undefined;
 }) {
   const gt = useGT();
-  if (qa === null) {
+  const noop = () => undefined;
+  if (ledger === null) {
     return (
       <StatRow
         icon={loading ? <Spinner size="md" tone="muted" /> : <Ring arcs={[]} />}
         title={gt("QA")}
         detail={loading ? gt("Loading...") : gt("No QA results yet")}
         url={null}
-        onOpen={onOpen}
+        onOpen={noop}
       />
     );
   }
-  const tone: Tone =
-    qa.state === "passing" ? "success" : qa.state === "failing" ? "failure" : "pending";
-  const details = [
-    qa.failed > 0 ? gt("{count} failed", { count: qa.failed }) : null,
-    qa.open > 0 ? gt("{count} blocked or not run", { count: qa.open }) : null,
-    qa.current === false ? gt("tested an older commit") : null,
-  ].filter((part) => part !== null);
+  const qa = summarizeQaLedger(ledger.counts);
+  const labels: Record<QaLedgerStatus, string> = {
+    pass: gt("{count} passed", { count: ledger.counts.pass }),
+    partial: gt("{count} partial", { count: ledger.counts.partial }),
+    fail: gt("{count} failed", { count: ledger.counts.fail }),
+    blocked: gt("{count} blocked", { count: ledger.counts.blocked }),
+    waiting: gt("{count} running", { count: ledger.counts.waiting }),
+    not_run: gt("{count} not run", { count: ledger.counts.not_run }),
+    out_of_scope: gt("{count} out of scope", { count: ledger.counts.out_of_scope }),
+  };
+  const shown = ([...QA_RING_ORDER, "out_of_scope"] as const).filter(
+    (status) => ledger.counts[status] > 0,
+  );
+  const stale = isSameCommit(ledger.headSha, headSha) === false;
+  const levelTone =
+    qa.state === "passing"
+      ? QA_STATUS_TONE.pass
+      : qa.state === "failing"
+        ? QA_STATUS_TONE.fail
+        : qa.state === "running"
+          ? QA_STATUS_TONE.waiting
+          : QA_STATUS_TONE.partial;
   return (
     <StatRow
-      icon={<Ring arcs={[{ share: qa.total === 0 ? 0 : qa.passed / qa.total, tone }]} />}
+      icon={
+        <Ring
+          arcs={QA_RING_ORDER.map((status) => ({
+            share: qa.total === 0 ? 0 : ledger.counts[status] / qa.total,
+            className: QA_STATUS_TONE[status],
+          }))}
+        />
+      }
       title={
         <>
           {gt("QA")}{" "}
-          <span className={cn("tabular-nums", TONE[tone])}>
+          <span className={cn("tabular-nums", levelTone)}>
             {qa.passed}/{qa.total}
           </span>{" "}
           {qa.state === "passing"
             ? gt("passing", { $context: "QA level: every check passed" })
             : qa.state === "failing"
               ? gt("failing", { $context: "QA level: some checks failed" })
-              : gt("incomplete", { $context: "QA level: some checks not run yet" })}
+              : qa.state === "running"
+                ? gt("running", { $context: "QA level: checks are being tested now" })
+                : gt("incomplete", { $context: "QA level: some checks not run yet" })}
         </>
       }
-      detail={details.length === 0 ? gt("All checks passed") : details.join(" · ")}
-      url={qa.url}
-      onOpen={onOpen}
+      detail={
+        <>
+          {shown.map((status, index) => (
+            <span key={status}>
+              {index > 0 ? " · " : null}
+              <span className={cn("tabular-nums", QA_STATUS_TONE[status])}>{labels[status]}</span>
+            </span>
+          ))}
+          {stale ? (
+            <>
+              {shown.length > 0 ? " · " : null}
+              {gt("older commit")}
+            </>
+          ) : null}
+        </>
+      }
+      url={null}
+      onOpen={noop}
     />
   );
 }
@@ -313,9 +380,20 @@ export function ThreadDetailsPrHappy({
   });
   const activity = useEnvironmentQuerySelector(activityAtom, selectEnvironmentQueryData);
   const activityQuery = useEnvironmentQueryRefresh(activityAtom);
+  const ledgerQuery = useEnvironmentQuery(
+    serverEnvironment.qaLedger({
+      environmentId,
+      input: {
+        projectId: reference.projectId,
+        repository: reference.repository,
+        number: reference.number,
+      },
+    }),
+  );
   useLiveRefresh(
     () => {
       if (!activityQuery.isPending()) activityQuery.refresh();
+      if (!ledgerQuery.isPending) ledgerQuery.refresh();
     },
     {
       enabled: detail.state === "open",
@@ -335,7 +413,11 @@ export function ThreadDetailsPrHappy({
         url={`${detail.url}/checks`}
         onOpen={onOpen}
       />
-      <QaRow qa={summarizeQa(comments, detail.headSha)} loading={loading} onOpen={onOpen} />
+      <QaRow
+        ledger={ledgerQuery.data ?? null}
+        loading={ledgerQuery.isPending && ledgerQuery.data === null}
+        headSha={detail.headSha}
+      />
       <ConductorRow
         review={summarizeConductorReview(comments, detail.headSha)}
         loading={loading}

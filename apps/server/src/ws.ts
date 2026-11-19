@@ -253,6 +253,7 @@ import * as IssueService from "./issue/IssueService.ts";
 import * as ThreadIssueService from "./orchestration-v2/ThreadIssueService.ts";
 import * as IssueTrackerConnections from "./issue/IssueTrackerConnections.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
+import * as QaLedgerService from "./pullRequest/QaLedgerService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -1488,6 +1489,7 @@ export const layerWsRpc = (
       const threadIssues = yield* ThreadIssueService.ThreadIssueService;
       const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
+      const qaLedgers = yield* QaLedgerService.make;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const deviceHostContext =
@@ -2805,6 +2807,7 @@ export const layerWsRpc = (
           withPullRequestViewer(input, pullRequests.preview(input)),
         [WS_METHODS.pullRequestsChecks]: (input) =>
           withPullRequestViewer(input, pullRequests.checks(input)),
+        [WS_METHODS.pullRequestsQaLedger]: (input) => qaLedgers.latest(input),
         [WS_METHODS.pullRequestsActivity]: (input) =>
           withPullRequestViewer(input, openedPullRequestRead(pullRequests.activity(input))),
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>

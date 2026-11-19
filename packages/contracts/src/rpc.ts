@@ -201,6 +201,7 @@ import {
   GuestShareCreateResult,
 } from "./guestShare.ts";
 import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
+import { QaLedgerInput, QaLedgerSummary } from "./qaLedger.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -603,6 +604,7 @@ export const WS_METHODS = {
   pullRequestsDetail: "pullRequests.detail",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
+  pullRequestsQaLedger: "pullRequests.qaLedger",
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsReviewGuide: "pullRequests.reviewGuide",
   pullRequestsGenerateReviewGuide: "pullRequests.generateReviewGuide",
@@ -1171,6 +1173,12 @@ const WsPullRequestsChecksRpc = Rpc.make(WS_METHODS.pullRequestsChecks, {
   payload: PullRequestRef,
   success: Schema.NullOr(PullRequestChecks),
   error: PullRequestRpcError,
+});
+
+const WsPullRequestsQaLedgerRpc = Rpc.make(WS_METHODS.pullRequestsQaLedger, {
+  payload: QaLedgerInput,
+  success: Schema.NullOr(QaLedgerSummary),
+  error: EnvironmentAuthorizationError,
 });
 
 const WsPullRequestsActivityRpc = Rpc.make(WS_METHODS.pullRequestsActivity, {
@@ -2353,6 +2361,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsDetailRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
+  WsPullRequestsQaLedgerRpc,
   WsPullRequestsActivityRpc,
   WsPullRequestsReviewGuideRpc,
   WsPullRequestsGenerateReviewGuideRpc,

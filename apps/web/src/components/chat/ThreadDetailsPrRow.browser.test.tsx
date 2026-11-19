@@ -49,6 +49,8 @@ vi.mock(import("~/state/entities"), async (importOriginal) => ({
     ref === null ? null : { branch: null, pullRequests: state.pullRequests }) as never,
 }));
 vi.mock(import("~/state/issues"), () => ({ useLinkedIssueDetail: () => null }));
+// The query mock below answers every query with one shape; PR happy has its own tests.
+vi.mock(import("./ThreadDetailsPrHappy"), () => ({ ThreadDetailsPrHappy: (() => null) as never }));
 
 const queryData = () => ({
   projectId: ProjectId.make("project"),

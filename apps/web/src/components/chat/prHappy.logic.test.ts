@@ -1,6 +1,7 @@
+import type { QaLedgerStatus } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { summarizeChecks, summarizeConductorReview, summarizeQa } from "./prHappy.logic";
+import { summarizeChecks, summarizeConductorReview, summarizeQaLedger } from "./prHappy.logic";
 
 const HEAD = "7f0f51acc071e32dbc8dae96410184b93036b8f2";
 let minute = 0;
@@ -103,62 +104,33 @@ describe("summarizeConductorReview", () => {
   });
 });
 
-describe("summarizeQa", () => {
-  it("reads a QA report's summary line and tested commit", () => {
-    expect(
-      summarizeQa(
-        [
-          comment(
-            "tester",
-            [
-              "#### QA results",
-              "",
-              "**Summary:** 9 passed, 3 failed, 8 blocked, 0 not run.",
-              "**Tested:** commit `7f0f51acc071` on https://pr-1.preview.example.",
-            ].join("\n"),
-          ),
-        ],
-        HEAD,
-      ),
-    ).toMatchObject({ passed: 9, failed: 3, open: 8, total: 20, state: "failing", current: true });
+describe("summarizeQaLedger", () => {
+  const counts = (fields: Partial<Record<QaLedgerStatus, number>>) => ({
+    not_run: 0,
+    waiting: 0,
+    blocked: 0,
+    fail: 0,
+    partial: 0,
+    pass: 0,
+    out_of_scope: 0,
+    ...fields,
   });
 
-  it("uses a retest's overall standing over the rows it reran", () => {
-    expect(
-      summarizeQa(
-        [
-          comment(
-            "tester",
-            [
-              "#### QA retest results",
-              "",
-              "**Overall now:** 50 passed, 0 failed, 2 blocked, 0 not run (all items).",
-              "| 2 | Check | ❌ Fail | ✅ Pass | 1 passed in this run |",
-            ].join("\n"),
-          ),
-        ],
-        HEAD,
-      ),
-    ).toMatchObject({ passed: 50, open: 2, total: 52, state: "incomplete", current: null });
+  it("leaves out-of-scope checks out of the level", () => {
+    expect(summarizeQaLedger(counts({ pass: 49, out_of_scope: 7 }))).toEqual({
+      passed: 49,
+      total: 49,
+      state: "passing",
+    });
   });
 
-  it("takes the totals from the part of a split report that states them", () => {
-    const qa = summarizeQa(
-      [
-        comment(
-          "me",
-          "## QA results - full report, part 1\n\n**Accepted results: 52 passed; 9 checks out of scope; 0 failed, partial, blocked or not run.**",
-        ),
-        comment("me", "## QA results - full report, part 2\n\n### 31. A check\n\nOut of scope"),
-        bot("## QA: 60 things to test"),
-      ],
-      HEAD,
-    );
-    expect(qa).toMatchObject({ passed: 52, failed: 0, open: 0, total: 52, state: "passing" });
-    expect(qa?.url).toContain("issuecomment-");
-  });
-
-  it("returns nothing before anyone reports QA results", () => {
-    expect(summarizeQa([bot("## QA: 52 things to test")], HEAD)).toBeNull();
+  it("fails on any failure, shows a run in progress, and is otherwise incomplete", () => {
+    expect(summarizeQaLedger(counts({ pass: 32, fail: 11, partial: 1 }))).toMatchObject({
+      total: 44,
+      state: "failing",
+    });
+    expect(summarizeQaLedger(counts({ pass: 6, waiting: 2, blocked: 2 })).state).toBe("running");
+    expect(summarizeQaLedger(counts({ pass: 6, blocked: 4 })).state).toBe("incomplete");
+    expect(summarizeQaLedger(counts({ out_of_scope: 3 })).state).toBe("empty");
   });
 });

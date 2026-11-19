@@ -1566,6 +1566,11 @@ export function createServerEnvironmentAtoms<R, E>(
       refreshIntervalMs: 5_000,
       idleTtlMs: 0,
     }),
+    qaLedger: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:qa-ledger",
+      tag: WS_METHODS.pullRequestsQaLedger,
+      staleTimeMs: 30_000,
+    }),
     scheduledTaskWebhookDeliveries: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:scheduled-task:webhook-deliveries",
       tag: WS_METHODS.scheduledTasksListWebhookDeliveries,

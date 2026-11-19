@@ -248,6 +248,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-diff-deletion-foreground: var(--diff-deletion-foreground);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
+  /* QA report verdict colours (Desktop/Skills/_shared/qa-report), so the panel matches the report. */
+  --color-qa-not-run: #6b7280;
+  --color-qa-waiting: #8b5cf6;
+  --color-qa-blocked: #f97316;
+  --color-qa-fail: #ef4444;
+  --color-qa-partial: #eab308;
+  --color-qa-pass: #22c55e;
+  --color-qa-out-of-scope: #64748b;
   --color-guest: var(--guest);
   --color-guest-foreground: var(--guest-foreground);
   --color-guest-surface: var(--guest-surface);

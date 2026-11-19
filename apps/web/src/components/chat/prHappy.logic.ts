@@ -1,4 +1,4 @@
-import type { PullRequestCheck } from "@t3tools/contracts";
+import type { PullRequestCheck, QaLedgerStatus } from "@t3tools/contracts";
 
 /** The GitHub account the Conductor review bot posts as. */
 const CONDUCTOR_BOT_LOGIN = "nv-amd";
@@ -131,68 +131,30 @@ export function summarizeConductorReview(
   };
 }
 
+/** Verdicts that count toward the QA level; out-of-scope checks are left out, as the report does. */
+const QA_COUNTED = ["pass", "partial", "fail", "blocked", "waiting", "not_run"] as const;
+
 export interface QaLevel {
   readonly passed: number;
-  readonly failed: number;
-  /** Blocked, partial and not-run checks. */
-  readonly open: number;
   readonly total: number;
-  readonly state: "passing" | "failing" | "incomplete";
-  readonly testedSha: string | null;
-  /** Null when the report did not say which commit it tested. */
-  readonly current: boolean | null;
-  readonly url: string | null;
+  readonly state: "passing" | "failing" | "running" | "incomplete" | "empty";
 }
 
-const QA_REPORT = /^#{1,6}\s*QA\s+(?:retest\s+)?results\b/i;
-const QA_TESTED = /\*\*Tested:\*\*\s*commit\s+`([0-9a-f]{7,40})`/i;
-// Reports put their totals on a labelled line; the overall line wins over a retest's own run.
-const QA_TOTAL_LINES = [/overall now/i, /summary/i, /accepted results/i, /\d+\s+pass/i];
-
-function countOf(line: string, pattern: RegExp) {
-  return Number(pattern.exec(line)?.[1] ?? 0);
+export function summarizeQaLedger(counts: Readonly<Record<QaLedgerStatus, number>>): QaLevel {
+  const total = QA_COUNTED.reduce((sum, status) => sum + counts[status], 0);
+  const state =
+    total === 0
+      ? "empty"
+      : counts.fail > 0
+        ? "failing"
+        : counts.pass === total
+          ? "passing"
+          : counts.waiting > 0
+            ? "running"
+            : "incomplete";
+  return { passed: counts.pass, total, state };
 }
 
-function readQaCounts(body: string) {
-  const lines = body.split("\n");
-  for (const label of QA_TOTAL_LINES) {
-    const line = lines.find((candidate) => label.test(candidate) && /\d+\s+pass/i.test(candidate));
-    if (line === undefined) continue;
-    const passed = countOf(line, /(\d+)\s+pass(?:ed|es)?\b/i);
-    const failed = countOf(line, /(\d+)\s+fail(?:ed|s|ures?)?\b/i);
-    const open =
-      countOf(line, /(\d+)\s+blocked\b/i) +
-      countOf(line, /(\d+)\s+partial\b/i) +
-      countOf(line, /(\d+)\s+not\s+run\b/i);
-    return { passed, failed, open };
-  }
-  return null;
-}
-
-/** Reads the newest QA report that states its totals; a report split in parts states them once. */
-export function summarizeQa(
-  comments: ReadonlyArray<Comment>,
-  headSha: string | undefined,
-): QaLevel | null {
-  for (const comment of comments.toReversed()) {
-    if (!QA_REPORT.test(firstLine(comment.body))) continue;
-    const counts = readQaCounts(comment.body);
-    if (counts === null) continue;
-    const total = counts.passed + counts.failed + counts.open;
-    const testedSha = QA_TESTED.exec(comment.body)?.[1] ?? null;
-    return {
-      ...counts,
-      total,
-      state:
-        counts.failed > 0
-          ? "failing"
-          : counts.open === 0 && counts.passed > 0
-            ? "passing"
-            : "incomplete",
-      testedSha,
-      current: testedSha === null ? null : sameCommit(testedSha, headSha),
-      url: comment.url,
-    };
-  }
-  return null;
+export function isSameCommit(sha: string | null, headSha: string | undefined): boolean | null {
+  return sha === null || headSha === undefined ? null : sameCommit(sha, headSha);
 }

@@ -120,6 +120,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.pullRequestsDetail]: "pull-requests",
   [WS_METHODS.pullRequestsPreview]: "pull-requests",
   [WS_METHODS.pullRequestsChecks]: "pull-requests",
+  [WS_METHODS.pullRequestsQaLedger]: "pull-requests",
   [WS_METHODS.pullRequestsActivity]: "pull-requests",
   [WS_METHODS.pullRequestsReviewGuide]: "pull-requests",
   [WS_METHODS.pullRequestsGenerateReviewGuide]: "pull-requests",
