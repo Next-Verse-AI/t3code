@@ -81,13 +81,21 @@ describe("summarizeConductorReview", () => {
 
   it("shows a started or queued review until it ends", () => {
     const earlier = [started("0337ba513681"), bot("## Findings found\n\n### [P3] Nit")];
-    expect(summarizeConductorReview([...earlier, started(HEAD.slice(0, 12))], HEAD)).toMatchObject({
+    const running = started(HEAD.slice(0, 12));
+    // The link opens the run in progress; the counts stay with the last finished review.
+    expect(summarizeConductorReview([...earlier, running], HEAD)).toMatchObject({
       total: 1,
       reviewing: true,
+      hasResult: true,
+      url: running.url,
     });
-    expect(
-      summarizeConductorReview([bot("Conductor review is queued. It will start soon.")], HEAD),
-    ).toMatchObject({ total: 0, reviewing: true, url: null });
+    const queued = bot("Conductor review is queued. It will start soon.");
+    expect(summarizeConductorReview([queued], HEAD)).toMatchObject({
+      total: 0,
+      reviewing: true,
+      hasResult: false,
+      url: queued.url,
+    });
     expect(
       summarizeConductorReview(
         [...earlier, started(HEAD.slice(0, 12)), bot("Conductor paused after repeated failures.")],

@@ -326,7 +326,7 @@ function ConductorRow({
     (priority) => (review?.findings[priority] ?? 0) > 0,
   );
   const tone: Tone =
-    review === null || review.url === null
+    review === null || !review.hasResult
       ? "muted"
       : review.findings.P0 + review.findings.P1 > 0
         ? "failure"
@@ -340,7 +340,7 @@ function ConductorRow({
       <ScanSearchIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
     );
   const findings =
-    review === null || review.url === null ? null : priorities.length === 0 ? (
+    review === null || !review.hasResult ? null : priorities.length === 0 ? (
       gt("No findings")
     ) : (
       <>

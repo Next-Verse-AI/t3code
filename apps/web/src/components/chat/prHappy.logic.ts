@@ -62,6 +62,9 @@ export interface ConductorReview {
   readonly current: boolean | null;
   /** A newer review has started and not ended yet. */
   readonly reviewing: boolean;
+  /** Whether any review finished; the findings come from the latest one that did. */
+  readonly hasResult: boolean;
+  /** Conductor's newest review comment: a result, or a run started, queued or ended since. */
   readonly url: string | null;
 }
 
@@ -101,6 +104,7 @@ export function summarizeConductorReview(
   });
   const endedIndex = bot.findLastIndex((comment) => REVIEW_ENDED.test(firstLine(comment.body)));
   const reviewing = startedIndex > resultIndex && startedIndex > endedIndex;
+  const url = bot[Math.max(resultIndex, startedIndex, endedIndex)]?.url ?? null;
   if (resultIndex === -1) {
     return reviewing
       ? {
@@ -109,7 +113,8 @@ export function summarizeConductorReview(
           reviewedSha: null,
           current: null,
           reviewing,
-          url: null,
+          hasResult: false,
+          url,
         }
       : null;
   }
@@ -127,7 +132,8 @@ export function summarizeConductorReview(
     reviewedSha,
     current: reviewedSha === null ? null : sameCommit(reviewedSha, headSha),
     reviewing,
-    url: result.url,
+    hasResult: true,
+    url,
   };
 }
 
