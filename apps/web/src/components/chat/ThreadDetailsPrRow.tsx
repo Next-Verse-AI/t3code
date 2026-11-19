@@ -4,6 +4,7 @@ import { changeRequestTermKind } from "../pullRequest/changeRequestTerm";
 import { T, useGT, useMessages, Var } from "gt-react";
 import { PullRequestChangeBreakdownRows } from "../pullRequest/PullRequestChangeBreakdownStat";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
+import { ThreadDetailsPrHappy } from "./ThreadDetailsPrHappy";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -97,6 +98,7 @@ export function ThreadDetailsPrRow({
   onActed,
   onStopWatching,
   composerTarget,
+  onOpenHappyLink,
 }: {
   environmentId: EnvironmentId;
   pr: ThreadPr;
@@ -110,6 +112,8 @@ export function ThreadDetailsPrRow({
   onStopWatching?: (() => void) | undefined;
   /** Fix and Resolve write here instead of checking the pull request out in a new thread. */
   composerTarget?: ComposerThreadTarget | undefined;
+  /** Shows the PR happy stats under the row, opening their links with this. */
+  onOpenHappyLink?: ((event: ReactMouseEvent<HTMLElement>, url: string) => void) | undefined;
 }) {
   const gt = useGT();
   const m = useMessages();
@@ -577,6 +581,14 @@ export function ThreadDetailsPrRow({
       ) : (
         openRow(label, "row")
       )}
+      {onOpenHappyLink !== undefined && reference !== null && detail?.state === "open" ? (
+        <ThreadDetailsPrHappy
+          environmentId={environmentId}
+          reference={reference}
+          detail={detail}
+          onOpen={onOpenHappyLink}
+        />
+      ) : null}
       {rowAction === "merge" ? (
         <AlertDialog open={confirmingMerge} onOpenChange={(open) => setConfirmingMerge(open)}>
           <AlertDialogPopup>

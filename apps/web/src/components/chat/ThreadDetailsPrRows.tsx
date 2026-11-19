@@ -36,6 +36,8 @@ import {
 } from "../ThreadStatusIndicators";
 
 import { ThreadDetailsPrRow } from "./ThreadDetailsPrRow";
+import { useClientSettings } from "~/hooks/useSettings";
+import { resolveThreadDetailsVisibility } from "./threadDetailsItems";
 
 function ThreadDetailsPrLinkRow({
   environmentId,
@@ -94,6 +96,7 @@ function ThreadDetailsPrRows({
   onOpenLink: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const showHappy = useClientSettings(resolveThreadDetailsVisibility).prHappy;
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: true });
   const stopWatching = (link: ThreadPullRequestLink | null) =>
     link?.watch === undefined
@@ -109,7 +112,13 @@ function ThreadDetailsPrRows({
               watching: false,
             },
           });
-  const currentRow = <ThreadDetailsPrRow {...row} onStopWatching={stopWatching(currentLink)} />;
+  const currentRow = (
+    <ThreadDetailsPrRow
+      {...row}
+      onStopWatching={stopWatching(currentLink)}
+      onOpenHappyLink={showHappy ? onOpenLink : undefined}
+    />
+  );
   const rest =
     currentLink === null
       ? []
