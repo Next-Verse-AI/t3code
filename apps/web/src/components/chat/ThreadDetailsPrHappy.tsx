@@ -10,7 +10,8 @@ import { useGT } from "gt-react";
 import { ScanSearchIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
-import { useLiveRefresh } from "~/hooks/useLiveRefresh";
+import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "~/hooks/useLiveRefresh";
+import { useNowSecond } from "~/hooks/useNowSecond";
 import { cn } from "~/lib/utils";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { serverEnvironment } from "~/state/server";
@@ -28,6 +29,7 @@ import {
   type ChecksSummary,
   type ConductorReview,
   type FindingPriority,
+  formatRunClock,
   isSameCommit,
   summarizeChecks,
   summarizeConductorReview,
@@ -35,13 +37,14 @@ import {
 } from "./prHappy.logic";
 
 const ACTIVITY_REFRESH_MS = 2 * 60_000;
+const LOCAL_CI_REFRESH_MS = LIVE_REFRESH_MIN_INTERVAL_MS;
 const RING_RADIUS = 7;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const TONE = {
-  success: "text-emerald-600 dark:text-emerald-400",
+  success: "text-success-foreground",
   failure: "text-destructive",
-  pending: "text-amber-600 dark:text-amber-400",
+  pending: "text-warning-foreground",
   muted: "text-muted-foreground/60",
 } as const;
 type Tone = keyof typeof TONE;
@@ -122,6 +125,24 @@ function StatRow({
     >
       {content}
     </ThreadDetailsControl>
+  );
+}
+
+function LocalCiRow({ startedAt }: { startedAt: number }) {
+  const gt = useGT();
+  const now = useNowSecond();
+  return (
+    <StatRow
+      icon={
+        <span className={cn("inline-flex shrink-0", TONE.pending)}>
+          <Spinner size="md" />
+        </span>
+      }
+      title={gt("Local CI/CD running")}
+      detail={<span className="tabular-nums">{formatRunClock((now - startedAt) / 1000)}</span>}
+      url={null}
+      onOpen={() => undefined}
+    />
   );
 }
 
@@ -369,7 +390,10 @@ export function ThreadDetailsPrHappy({
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
-  detail: Pick<PullRequestDetail, "url" | "headSha" | "checks" | "mergeability" | "state">;
+  detail: Pick<
+    PullRequestDetail,
+    "url" | "headSha" | "headBranch" | "isDraft" | "checks" | "mergeability" | "state"
+  >;
   onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
 }) {
   const gt = useGT();
@@ -390,6 +414,28 @@ export function ThreadDetailsPrHappy({
       },
     }),
   );
+  // A draft is checked locally with cd:local before GitHub's CI runs on it.
+  const localCiQuery = useEnvironmentQuery(
+    detail.isDraft
+      ? serverEnvironment.localCiRun({
+          environmentId,
+          input: {
+            headBranch: detail.headBranch,
+            ...(detail.headSha === undefined ? {} : { headSha: detail.headSha }),
+          },
+        })
+      : null,
+  );
+  useLiveRefresh(
+    () => {
+      if (!localCiQuery.isPending) localCiQuery.refresh();
+    },
+    {
+      enabled: detail.isDraft && detail.state === "open",
+      key: `pr-happy-local-ci:${environmentId}:${reference.repository}#${reference.number}`,
+      intervalMs: LOCAL_CI_REFRESH_MS,
+    },
+  );
   useLiveRefresh(
     () => {
       if (!activityQuery.isPending()) activityQuery.refresh();
@@ -408,11 +454,15 @@ export function ThreadDetailsPrHappy({
       <div className="px-2.5 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground select-none">
         {gt("PR happy")}
       </div>
-      <ChecksRow
-        checks={summarizeChecks(detail.checks, detail.mergeability === "conflicting")}
-        url={`${detail.url}/checks`}
-        onOpen={onOpen}
-      />
+      {localCiQuery.data ? (
+        <LocalCiRow startedAt={localCiQuery.data.startedAt} />
+      ) : (
+        <ChecksRow
+          checks={summarizeChecks(detail.checks, detail.mergeability === "conflicting")}
+          url={`${detail.url}/checks`}
+          onOpen={onOpen}
+        />
+      )}
       <QaRow
         ledger={ledgerQuery.data ?? null}
         loading={ledgerQuery.isPending && ledgerQuery.data === null}

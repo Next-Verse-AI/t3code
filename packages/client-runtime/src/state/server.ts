@@ -1566,6 +1566,11 @@ export function createServerEnvironmentAtoms<R, E>(
       refreshIntervalMs: 5_000,
       idleTtlMs: 0,
     }),
+    localCiRun: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:local-ci-run",
+      tag: WS_METHODS.pullRequestsLocalCiRun,
+      staleTimeMs: 5_000,
+    }),
     qaLedger: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:qa-ledger",
       tag: WS_METHODS.pullRequestsQaLedger,

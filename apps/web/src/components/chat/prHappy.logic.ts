@@ -158,3 +158,14 @@ export function summarizeQaLedger(counts: Readonly<Record<QaLedgerStatus, number
 export function isSameCommit(sha: string | null, headSha: string | undefined): boolean | null {
   return sha === null || headSha === undefined ? null : sameCommit(sha, headSha);
 }
+
+/** A running timer: `m:ss`, or `h:mm:ss` past an hour. */
+export function formatRunClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(seconds % 60)}`
+    : `${minutes}:${pad(seconds % 60)}`;
+}

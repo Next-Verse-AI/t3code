@@ -1,7 +1,12 @@
 import type { QaLedgerStatus } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { summarizeChecks, summarizeConductorReview, summarizeQaLedger } from "./prHappy.logic";
+import {
+  formatRunClock,
+  summarizeChecks,
+  summarizeConductorReview,
+  summarizeQaLedger,
+} from "./prHappy.logic";
 
 const HEAD = "7f0f51acc071e32dbc8dae96410184b93036b8f2";
 let minute = 0;
@@ -132,5 +137,13 @@ describe("summarizeQaLedger", () => {
     expect(summarizeQaLedger(counts({ pass: 6, waiting: 2, blocked: 2 })).state).toBe("running");
     expect(summarizeQaLedger(counts({ pass: 6, blocked: 4 })).state).toBe("incomplete");
     expect(summarizeQaLedger(counts({ out_of_scope: 3 })).state).toBe("empty");
+  });
+});
+
+describe("formatRunClock", () => {
+  it("counts minutes and seconds, adding hours past the first", () => {
+    expect(formatRunClock(0)).toBe("0:00");
+    expect(formatRunClock(247.9)).toBe("4:07");
+    expect(formatRunClock(3723)).toBe("1:02:03");
   });
 });
