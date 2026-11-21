@@ -1571,6 +1571,11 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsLocalCiRun,
       staleTimeMs: 5_000,
     }),
+    pullRequestBaseStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:pull-request-base-status",
+      tag: WS_METHODS.pullRequestsBaseStatus,
+      staleTimeMs: 60_000,
+    }),
     qaLedger: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:qa-ledger",
       tag: WS_METHODS.pullRequestsQaLedger,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   formatRunClock,
+  summarizeBase,
   summarizeChecks,
   summarizeConductorReview,
   summarizeQaLedger,
@@ -153,5 +154,35 @@ describe("formatRunClock", () => {
     expect(formatRunClock(0)).toBe("0:00");
     expect(formatRunClock(247.9)).toBe("4:07");
     expect(formatRunClock(3723)).toBe("1:02:03");
+  });
+});
+
+describe("summarizeBase", () => {
+  const link = (number: number, state: "open" | "closed" | "merged") => ({
+    number,
+    url: `https://github.com/o/r/pull/${number}`,
+    state,
+    isDraft: false,
+    baseBranch: "development",
+  });
+
+  it("reads how far behind the base is", () => {
+    const status = { protectedBase: true, parent: null, children: [] };
+    expect(summarizeBase({ ...status, behindBy: 0 }).state).toBe("current");
+    expect(summarizeBase({ ...status, behindBy: 285 })).toMatchObject({
+      state: "behind",
+      behindBy: 285,
+    });
+    expect(summarizeBase({ ...status, behindBy: null }).state).toBe("unknown");
+  });
+
+  it("follows the parent only when the base is not a protected branch", () => {
+    const children = [link(1001, "open")];
+    expect(
+      summarizeBase({ protectedBase: false, behindBy: 0, parent: link(765, "merged"), children }),
+    ).toMatchObject({ stack: "merged", parent: { number: 765 }, children });
+    expect(
+      summarizeBase({ protectedBase: true, behindBy: 0, parent: link(765, "open"), children: [] }),
+    ).toMatchObject({ stack: null, parent: null });
   });
 });

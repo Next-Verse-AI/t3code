@@ -7,7 +7,7 @@ import type {
   QaLedgerSummary,
 } from "@t3tools/contracts";
 import { useGT } from "gt-react";
-import { ScanSearchIcon } from "lucide-react";
+import { GitBranchIcon, LayersIcon, ScanSearchIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "~/hooks/useLiveRefresh";
@@ -26,11 +26,13 @@ import { Spinner } from "../ui/spinner";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { THREAD_DETAILS_PANEL_STATIC_ROW_CLASS } from "./threadDetailsPanelStyles";
 import {
+  type BaseSummary,
   type ChecksSummary,
   type ConductorReview,
   type FindingPriority,
   formatRunClock,
   isSameCommit,
+  summarizeBase,
   summarizeChecks,
   summarizeConductorReview,
   summarizeQaLedger,
@@ -197,6 +199,99 @@ function ChecksRow({
             })
       }
       url={url}
+      onOpen={onOpen}
+    />
+  );
+}
+
+function stackedOnLabel(children: BaseSummary["children"]) {
+  return children.map((child) => `#${child.number}`).join(", ");
+}
+
+function BaseRow({
+  base,
+  loading,
+  baseBranch,
+  compareUrl,
+  onOpen,
+}: {
+  base: BaseSummary | null;
+  loading: boolean;
+  baseBranch: string;
+  compareUrl: string;
+  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const gt = useGT();
+  const target = base?.parent ? `#${base.parent.number}` : baseBranch;
+  const tone: Tone =
+    base === null || base.state === "unknown"
+      ? "muted"
+      : base.state === "current"
+        ? "success"
+        : "pending";
+  const title =
+    base === null
+      ? gt("Base")
+      : base.state === "current"
+        ? gt("Up to date with {target}", { target })
+        : base.state === "behind"
+          ? gt(
+              "{count, plural, one {{formatted} commit behind {target}} other {{formatted} commits behind {target}}}",
+              {
+                count: base.behindBy ?? 0,
+                formatted: (base.behindBy ?? 0).toLocaleString(),
+                target,
+              },
+            )
+          : gt("Can't compare with {target}", { target });
+  const notes = [
+    base?.parent ? baseBranch : gt("Base branch"),
+    base !== null && base.children.length > 0
+      ? gt("{list} stacked on this", { list: stackedOnLabel(base.children) })
+      : null,
+  ].filter((note) => note !== null);
+  return (
+    <StatRow
+      icon={
+        loading ? (
+          <Spinner size="md" tone="muted" />
+        ) : (
+          <GitBranchIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
+        )
+      }
+      title={title}
+      detail={loading ? gt("Loading...") : notes.join(" · ")}
+      url={base?.state === "behind" ? compareUrl : null}
+      onOpen={onOpen}
+    />
+  );
+}
+
+function StackRow({
+  base,
+  onOpen,
+}: {
+  base: BaseSummary & { readonly parent: NonNullable<BaseSummary["parent"]> };
+  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const gt = useGT();
+  const { parent } = base;
+  const tone: Tone =
+    base.stack === "open" ? "success" : base.stack === "merged" ? "pending" : "failure";
+  const detail =
+    base.stack === "open"
+      ? parent.isDraft
+        ? gt("Draft", { $context: "parent pull request status" })
+        : gt("Open", { $context: "parent pull request status" })
+      : base.stack === "merged"
+        ? gt("Merged - move this PR to {baseBranch}", { baseBranch: parent.baseBranch })
+        : gt("Closed without merging");
+  return (
+    <StatRow
+      icon={<LayersIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />}
+      title={gt("Stacked on #{number}", { number: parent.number })}
+      detail={detail}
+      url={parent.url}
       onOpen={onOpen}
     />
   );
@@ -392,7 +487,14 @@ export function ThreadDetailsPrHappy({
   reference: PullRequestRef;
   detail: Pick<
     PullRequestDetail,
-    "url" | "headSha" | "headBranch" | "isDraft" | "checks" | "mergeability" | "state"
+    | "url"
+    | "headSha"
+    | "headBranch"
+    | "baseBranch"
+    | "isDraft"
+    | "checks"
+    | "mergeability"
+    | "state"
   >;
   onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
 }) {
@@ -436,10 +538,24 @@ export function ThreadDetailsPrHappy({
       intervalMs: LOCAL_CI_REFRESH_MS,
     },
   );
+  const baseQuery = useEnvironmentQuery(
+    detail.headSha === undefined
+      ? null
+      : serverEnvironment.pullRequestBaseStatus({
+          environmentId,
+          input: {
+            repository: reference.repository,
+            headBranch: detail.headBranch,
+            headSha: detail.headSha,
+            baseBranch: detail.baseBranch,
+          },
+        }),
+  );
   useLiveRefresh(
     () => {
       if (!activityQuery.isPending()) activityQuery.refresh();
       if (!ledgerQuery.isPending) ledgerQuery.refresh();
+      if (!baseQuery.isPending) baseQuery.refresh();
     },
     {
       enabled: detail.state === "open",
@@ -449,11 +565,21 @@ export function ThreadDetailsPrHappy({
   );
   const comments = activity?.comments ?? [];
   const loading = activity === null;
+  const base = baseQuery.data ? summarizeBase(baseQuery.data) : null;
+  const repositoryUrl = detail.url.replace(/\/pull\/\d+\/?$/, "");
   return (
     <div data-thread-details-pr-happy className="flex flex-col pb-1">
       <div className="px-2.5 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground select-none">
         {gt("PR happy")}
       </div>
+      <BaseRow
+        base={base}
+        loading={baseQuery.isPending && baseQuery.data === null}
+        baseBranch={detail.baseBranch}
+        compareUrl={`${repositoryUrl}/compare/${detail.headBranch}...${detail.baseBranch}`}
+        onOpen={onOpen}
+      />
+      {base?.parent ? <StackRow base={{ ...base, parent: base.parent }} onOpen={onOpen} /> : null}
       {localCiQuery.data ? (
         <LocalCiRow startedAt={localCiQuery.data.startedAt} />
       ) : (

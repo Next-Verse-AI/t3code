@@ -1,4 +1,9 @@
-import type { PullRequestCheck, QaLedgerStatus } from "@t3tools/contracts";
+import type {
+  PullRequestBaseStatus,
+  PullRequestCheck,
+  PullRequestStackLink,
+  QaLedgerStatus,
+} from "@t3tools/contracts";
 
 /** The GitHub account the Conductor review bot posts as. */
 const CONDUCTOR_BOT_LOGIN = "nv-amd";
@@ -174,4 +179,26 @@ export function formatRunClock(totalSeconds: number): string {
   return hours > 0
     ? `${hours}:${pad(minutes)}:${pad(seconds % 60)}`
     : `${minutes}:${pad(seconds % 60)}`;
+}
+
+export interface BaseSummary {
+  /** Behind is any commit on the base the head does not have yet. */
+  readonly state: "current" | "behind" | "unknown";
+  readonly behindBy: number | null;
+  /** The parent pull request when the base is its branch. */
+  readonly parent: PullRequestStackLink | null;
+  /** Open: keep the base. Merged: move down the stack. Closed: stuck on an unmerged branch. */
+  readonly stack: "open" | "merged" | "closed" | null;
+  readonly children: ReadonlyArray<PullRequestStackLink>;
+}
+
+export function summarizeBase(status: PullRequestBaseStatus): BaseSummary {
+  const parent = status.protectedBase ? null : status.parent;
+  return {
+    state: status.behindBy === null ? "unknown" : status.behindBy === 0 ? "current" : "behind",
+    behindBy: status.behindBy,
+    parent,
+    stack: parent?.state ?? null,
+    children: status.children,
+  };
 }

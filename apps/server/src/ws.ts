@@ -255,6 +255,7 @@ import * as IssueTrackerConnections from "./issue/IssueTrackerConnections.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import * as QaLedgerService from "./pullRequest/QaLedgerService.ts";
 import * as LocalCiRunService from "./pullRequest/LocalCiRunService.ts";
+import * as PullRequestBaseStatusService from "./pullRequest/PullRequestBaseStatusService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1493,6 +1494,9 @@ export const layerWsRpc = (
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
       const qaLedgers = yield* QaLedgerService.make;
       const localCiRuns = yield* LocalCiRunService.make.pipe(Effect.provide(ProcessRunner.layer));
+      const baseStatuses = yield* PullRequestBaseStatusService.make.pipe(
+        Effect.provide(ProcessRunner.layer),
+      );
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const deviceHostContext =
@@ -2812,6 +2816,7 @@ export const layerWsRpc = (
           withPullRequestViewer(input, pullRequests.checks(input)),
         [WS_METHODS.pullRequestsQaLedger]: (input) => qaLedgers.latest(input),
         [WS_METHODS.pullRequestsLocalCiRun]: (input) => localCiRuns.current(input),
+        [WS_METHODS.pullRequestsBaseStatus]: (input) => baseStatuses.read(input),
         [WS_METHODS.pullRequestsActivity]: (input) =>
           withPullRequestViewer(input, openedPullRequestRead(pullRequests.activity(input))),
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>
