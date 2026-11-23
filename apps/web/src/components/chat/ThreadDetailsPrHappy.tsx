@@ -1,13 +1,14 @@
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
+  PullRequestDeployment,
   PullRequestDetail,
   PullRequestRef,
   QaLedgerStatus,
   QaLedgerSummary,
 } from "@t3tools/contracts";
 import { useGT } from "gt-react";
-import { GitBranchIcon, LayersIcon, ScanSearchIcon } from "lucide-react";
+import { GitBranchIcon, LayersIcon, RocketIcon, ScanSearchIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "~/hooks/useLiveRefresh";
@@ -30,6 +31,7 @@ import {
   type ChecksSummary,
   type ConductorReview,
   type FindingPriority,
+  deploymentSeconds,
   formatRunClock,
   isSameCommit,
   summarizeBase,
@@ -144,6 +146,52 @@ function LocalCiRow({ startedAt }: { startedAt: number }) {
       detail={<span className="tabular-nums">{formatRunClock((now - startedAt) / 1000)}</span>}
       url={null}
       onOpen={() => undefined}
+    />
+  );
+}
+
+function DeploymentRow({
+  deployment,
+  headSha,
+  onOpen,
+}: {
+  deployment: PullRequestDeployment;
+  headSha: string | undefined;
+  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+}) {
+  const gt = useGT();
+  const now = useNowSecond();
+  const { environment, state } = deployment;
+  const clock = formatRunClock(deploymentSeconds(deployment, now));
+  const title = {
+    running: gt("Deploying to {environment}", { environment }),
+    success: gt("Deployed to {environment}", { environment }),
+    failure: gt("Deployment to {environment} failed", { environment }),
+    inactive: gt("Deployed to {environment}", { environment }),
+  }[state];
+  const notes = [
+    state === "running"
+      ? gt("Running for {duration}", { duration: clock })
+      : gt("Took {duration}", { duration: clock }),
+    state === "inactive" ? gt("replaced by a newer deployment") : null,
+    isSameCommit(deployment.sha, headSha) === false ? gt("older commit") : null,
+  ].filter((note) => note !== null);
+  const tone: Tone = state === "success" ? "success" : state === "failure" ? "failure" : "muted";
+  return (
+    <StatRow
+      icon={
+        state === "running" ? (
+          <span className={cn("inline-flex shrink-0", TONE.pending)}>
+            <Spinner size="md" />
+          </span>
+        ) : (
+          <RocketIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
+        )
+      }
+      title={title}
+      detail={<span className="tabular-nums">{notes.join(" · ")}</span>}
+      url={deployment.url}
+      onOpen={onOpen}
     />
   );
 }
@@ -551,9 +599,26 @@ export function ThreadDetailsPrHappy({
           },
         }),
   );
+  const deploymentQuery = useEnvironmentQuery(
+    serverEnvironment.pullRequestDeployment({
+      environmentId,
+      input: { repository: reference.repository, headBranch: detail.headBranch },
+    }),
+  );
+  useLiveRefresh(
+    () => {
+      if (!deploymentQuery.isPending) deploymentQuery.refresh();
+    },
+    {
+      enabled: deploymentQuery.data?.state === "running",
+      key: `pr-happy-deployment:${environmentId}:${reference.repository}#${reference.number}`,
+      intervalMs: LOCAL_CI_REFRESH_MS,
+    },
+  );
   useLiveRefresh(
     () => {
       if (!activityQuery.isPending()) activityQuery.refresh();
+      if (!deploymentQuery.isPending) deploymentQuery.refresh();
       if (!ledgerQuery.isPending) ledgerQuery.refresh();
       if (!baseQuery.isPending) baseQuery.refresh();
     },
@@ -589,6 +654,9 @@ export function ThreadDetailsPrHappy({
           onOpen={onOpen}
         />
       )}
+      {deploymentQuery.data ? (
+        <DeploymentRow deployment={deploymentQuery.data} headSha={detail.headSha} onOpen={onOpen} />
+      ) : null}
       <QaRow
         ledger={ledgerQuery.data ?? null}
         loading={ledgerQuery.isPending && ledgerQuery.data === null}

@@ -1,6 +1,7 @@
 import type {
   PullRequestBaseStatus,
   PullRequestCheck,
+  PullRequestDeployment,
   PullRequestStackLink,
   QaLedgerStatus,
 } from "@t3tools/contracts";
@@ -201,4 +202,14 @@ export function summarizeBase(status: PullRequestBaseStatus): BaseSummary {
     stack: parent?.state ?? null,
     children: status.children,
   };
+}
+
+/** Seconds a deployment has run: until now while running, else until it finished. */
+export function deploymentSeconds(
+  deployment: Pick<PullRequestDeployment, "createdAt" | "finishedAt">,
+  nowMs: number,
+): number {
+  const start = Date.parse(deployment.createdAt);
+  const end = deployment.finishedAt === null ? nowMs : Date.parse(deployment.finishedAt);
+  return Number.isNaN(start) || Number.isNaN(end) ? 0 : Math.max(0, (end - start) / 1000);
 }

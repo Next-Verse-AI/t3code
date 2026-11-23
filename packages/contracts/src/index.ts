@@ -39,6 +39,7 @@ export * from "./pullRequestReviewGuide.ts";
 export * from "./qaLedger.ts";
 export * from "./localCiRun.ts";
 export * from "./pullRequestBase.ts";
+export * from "./pullRequestDeployment.ts";
 export * from "./issue.ts";
 export * from "./orchestrationDispatch.ts";
 export * from "./orchestrationProject.ts";

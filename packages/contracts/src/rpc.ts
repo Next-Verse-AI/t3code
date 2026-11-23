@@ -204,6 +204,7 @@ import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
 import { QaLedgerInput, QaLedgerSummary } from "./qaLedger.ts";
 import { LocalCiRun, LocalCiRunInput } from "./localCiRun.ts";
 import { PullRequestBaseStatus, PullRequestBaseStatusInput } from "./pullRequestBase.ts";
+import { PullRequestDeployment, PullRequestDeploymentInput } from "./pullRequestDeployment.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -609,6 +610,7 @@ export const WS_METHODS = {
   pullRequestsQaLedger: "pullRequests.qaLedger",
   pullRequestsLocalCiRun: "pullRequests.localCiRun",
   pullRequestsBaseStatus: "pullRequests.baseStatus",
+  pullRequestsDeployment: "pullRequests.deployment",
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsReviewGuide: "pullRequests.reviewGuide",
   pullRequestsGenerateReviewGuide: "pullRequests.generateReviewGuide",
@@ -1194,6 +1196,12 @@ const WsPullRequestsLocalCiRunRpc = Rpc.make(WS_METHODS.pullRequestsLocalCiRun, 
 const WsPullRequestsBaseStatusRpc = Rpc.make(WS_METHODS.pullRequestsBaseStatus, {
   payload: PullRequestBaseStatusInput,
   success: Schema.NullOr(PullRequestBaseStatus),
+  error: EnvironmentAuthorizationError,
+});
+
+const WsPullRequestsDeploymentRpc = Rpc.make(WS_METHODS.pullRequestsDeployment, {
+  payload: PullRequestDeploymentInput,
+  success: Schema.NullOr(PullRequestDeployment),
   error: EnvironmentAuthorizationError,
 });
 
@@ -2380,6 +2388,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsQaLedgerRpc,
   WsPullRequestsLocalCiRunRpc,
   WsPullRequestsBaseStatusRpc,
+  WsPullRequestsDeploymentRpc,
   WsPullRequestsActivityRpc,
   WsPullRequestsReviewGuideRpc,
   WsPullRequestsGenerateReviewGuideRpc,

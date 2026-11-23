@@ -256,6 +256,7 @@ import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewG
 import * as QaLedgerService from "./pullRequest/QaLedgerService.ts";
 import * as LocalCiRunService from "./pullRequest/LocalCiRunService.ts";
 import * as PullRequestBaseStatusService from "./pullRequest/PullRequestBaseStatusService.ts";
+import * as PullRequestDeploymentService from "./pullRequest/PullRequestDeploymentService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1495,6 +1496,9 @@ export const layerWsRpc = (
       const qaLedgers = yield* QaLedgerService.make;
       const localCiRuns = yield* LocalCiRunService.make.pipe(Effect.provide(ProcessRunner.layer));
       const baseStatuses = yield* PullRequestBaseStatusService.make.pipe(
+        Effect.provide(ProcessRunner.layer),
+      );
+      const deployments = yield* PullRequestDeploymentService.make.pipe(
         Effect.provide(ProcessRunner.layer),
       );
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
@@ -2817,6 +2821,7 @@ export const layerWsRpc = (
         [WS_METHODS.pullRequestsQaLedger]: (input) => qaLedgers.latest(input),
         [WS_METHODS.pullRequestsLocalCiRun]: (input) => localCiRuns.current(input),
         [WS_METHODS.pullRequestsBaseStatus]: (input) => baseStatuses.read(input),
+        [WS_METHODS.pullRequestsDeployment]: (input) => deployments.latest(input),
         [WS_METHODS.pullRequestsActivity]: (input) =>
           withPullRequestViewer(input, openedPullRequestRead(pullRequests.activity(input))),
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>
