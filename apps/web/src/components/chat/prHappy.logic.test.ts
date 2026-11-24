@@ -2,7 +2,6 @@ import type { QaLedgerStatus } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  deploymentSeconds,
   formatRunClock,
   summarizeBase,
   summarizeChecks,
@@ -185,21 +184,5 @@ describe("summarizeBase", () => {
     expect(
       summarizeBase({ protectedBase: true, behindBy: 0, parent: link(765, "open"), children: [] }),
     ).toMatchObject({ stack: null, parent: null });
-  });
-});
-
-describe("deploymentSeconds", () => {
-  const createdAt = "2026-11-23T15:58:12Z";
-  it("counts to now while running and to the finish once done", () => {
-    expect(deploymentSeconds({ createdAt, finishedAt: null }, Date.parse(createdAt) + 90_500)).toBe(
-      90.5,
-    );
-    expect(deploymentSeconds({ createdAt, finishedAt: "2026-11-23T15:58:55Z" }, 0)).toBe(43);
-  });
-  it("never goes negative or reads a bad date", () => {
-    expect(deploymentSeconds({ createdAt, finishedAt: null }, 0)).toBe(0);
-    expect(deploymentSeconds({ createdAt: "nope", finishedAt: null }, Date.parse(createdAt))).toBe(
-      0,
-    );
   });
 });

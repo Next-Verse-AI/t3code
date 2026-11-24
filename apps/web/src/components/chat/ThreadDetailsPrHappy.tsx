@@ -8,7 +8,13 @@ import type {
   QaLedgerSummary,
 } from "@t3tools/contracts";
 import { useGT } from "gt-react";
-import { GitBranchIcon, LayersIcon, RocketIcon, ScanSearchIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  GitBranchIcon,
+  LayersIcon,
+  RocketIcon,
+  ScanSearchIcon,
+} from "lucide-react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import { LIVE_REFRESH_MIN_INTERVAL_MS, useLiveRefresh } from "~/hooks/useLiveRefresh";
@@ -23,15 +29,14 @@ import {
 } from "~/state/query";
 
 import { pullRequestPanelReference } from "../pullRequest/usePullRequestDetail";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
-import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { THREAD_DETAILS_PANEL_STATIC_ROW_CLASS } from "./threadDetailsPanelStyles";
+import { THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS } from "./threadDetailsPanelStyles";
 import {
   type BaseSummary,
   type ChecksSummary,
   type ConductorReview,
   type FindingPriority,
-  deploymentSeconds,
   formatRunClock,
   isSameCommit,
   summarizeBase,
@@ -94,118 +99,101 @@ function Ring({
   );
 }
 
-function StatRow({
-  icon,
-  title,
-  detail,
-  url,
+type OpenLink = (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+
+/** What one PR happy item shows at rest, and the details its hover card adds. */
+interface Stat {
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly value: ReactNode;
+  readonly valueTone: Tone | null;
+  readonly title: ReactNode;
+  readonly detail: ReactNode;
+  readonly url: string | null;
+}
+
+/** Counts up from `since` (ms on the environment's clock), re-rendering only itself each second. */
+function RunClock({ since, until = null }: { since: number; until?: number | null }) {
+  const now = useNowSecond();
+  return <span className="tabular-nums">{formatRunClock(((until ?? now) - since) / 1000)}</span>;
+}
+
+// The base line matches the panel's other rows; tiles are compact two-line cells.
+const STAT_CARD_LAYOUT = {
+  line: `flex h-8 items-center text-[13px] ${THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS}`,
+  tile: `flex items-center py-1.5 ${THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS}`,
+} as const;
+
+/** Hover or click shows the item's details; the card links out when there is somewhere to go. */
+function StatCard({
+  stat,
   onOpen,
+  children,
+  layout,
 }: {
-  icon: ReactNode;
-  title: ReactNode;
-  detail: ReactNode;
-  url: string | null;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+  stat: Stat;
+  onOpen: OpenLink;
+  children: ReactNode;
+  layout: keyof typeof STAT_CARD_LAYOUT;
 }) {
-  const content = (
-    <>
-      {icon}
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate">{title}</span>
-        <span className="block truncate text-2xs font-normal text-muted-foreground">{detail}</span>
-      </span>
-    </>
-  );
-  return url === null ? (
-    <div className={THREAD_DETAILS_PANEL_STATIC_ROW_CLASS}>{content}</div>
-  ) : (
-    <ThreadDetailsControl
-      variant="ghost"
-      size="sm"
-      part="row"
-      multiline
-      onClick={(event) => onOpen(event, url)}
-      onAuxClick={(event) => onOpen(event, url)}
-    >
-      {content}
-    </ThreadDetailsControl>
+  const gt = useGT();
+  return (
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={200}
+        closeDelay={100}
+        render={<button type="button" />}
+        className={cn(
+          "min-w-0 rounded-lg text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
+          "hover:bg-black/[0.035] data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+          STAT_CARD_LAYOUT[layout],
+        )}
+      >
+        {children}
+      </PopoverTrigger>
+      <PopoverPopup side="left" align="start" sideOffset={8} padding="compact" width="sm">
+        <div className="flex flex-col gap-1 text-xs">
+          <div className="font-medium text-foreground">{stat.title}</div>
+          <div className="text-muted-foreground">{stat.detail}</div>
+          {stat.url === null ? null : (
+            <button
+              type="button"
+              className="mt-1 inline-flex w-fit items-center gap-1 rounded-md text-foreground/80 underline-offset-2 hover:text-foreground hover:underline"
+              onClick={(event) => onOpen(event, stat.url as string)}
+              onAuxClick={(event) => onOpen(event, stat.url as string)}
+            >
+              {gt("Open on GitHub")}
+              <ArrowUpRightIcon aria-hidden className="size-3" />
+            </button>
+          )}
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
-function LocalCiRow({ startedAt }: { startedAt: number }) {
-  const gt = useGT();
-  const now = useNowSecond();
+/** A compact tile in the status strip: icon, a small label, and its value. */
+function StatTile({ stat, onOpen }: { stat: Stat; onOpen: OpenLink }) {
   return (
-    <StatRow
-      icon={
-        <span className={cn("inline-flex shrink-0", TONE.pending)}>
-          <Spinner size="md" />
+    <StatCard stat={stat} onOpen={onOpen} layout="tile">
+      <span className="inline-flex size-4 shrink-0 items-center justify-center">{stat.icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-2xs text-muted-foreground">{stat.label}</span>
+        <span
+          className={cn(
+            "block truncate text-xs font-medium",
+            stat.valueTone === null ? "text-foreground/80" : TONE[stat.valueTone],
+          )}
+        >
+          {stat.value}
         </span>
-      }
-      title={gt("Local CI/CD running")}
-      detail={<span className="tabular-nums">{formatRunClock((now - startedAt) / 1000)}</span>}
-      url={null}
-      onOpen={() => undefined}
-    />
+      </span>
+    </StatCard>
   );
 }
 
-function DeploymentRow({
-  deployment,
-  headSha,
-  onOpen,
-}: {
-  deployment: PullRequestDeployment;
-  headSha: string | undefined;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
-}) {
-  const gt = useGT();
-  const now = useNowSecond();
-  const { environment, state } = deployment;
-  const clock = formatRunClock(deploymentSeconds(deployment, now));
-  const title = {
-    running: gt("Deploying to {environment}", { environment }),
-    success: gt("Deployed to {environment}", { environment }),
-    failure: gt("Deployment to {environment} failed", { environment }),
-    inactive: gt("Deployed to {environment}", { environment }),
-  }[state];
-  const notes = [
-    state === "running"
-      ? gt("Running for {duration}", { duration: clock })
-      : gt("Took {duration}", { duration: clock }),
-    state === "inactive" ? gt("replaced by a newer deployment") : null,
-    isSameCommit(deployment.sha, headSha) === false ? gt("older commit") : null,
-  ].filter((note) => note !== null);
-  const tone: Tone = state === "success" ? "success" : state === "failure" ? "failure" : "muted";
-  return (
-    <StatRow
-      icon={
-        state === "running" ? (
-          <span className={cn("inline-flex shrink-0", TONE.pending)}>
-            <Spinner size="md" />
-          </span>
-        ) : (
-          <RocketIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
-        )
-      }
-      title={title}
-      detail={<span className="tabular-nums">{notes.join(" · ")}</span>}
-      url={deployment.url}
-      onOpen={onOpen}
-    />
-  );
-}
-
-function ChecksRow({
-  checks,
-  url,
-  onOpen,
-}: {
-  checks: ChecksSummary;
-  url: string;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
-}) {
-  const gt = useGT();
+function checksStat(gt: ReturnType<typeof useGT>, checks: ChecksSummary, url: string): Stat {
   const { counts, total } = checks;
   const share = (count: number) => (total === 0 ? 0 : count / total);
   const parts = [
@@ -225,124 +213,116 @@ function ChecksRow({
     passing: gt("All checks have passed"),
     none: gt("No checks reported"),
   }[checks.state];
-  return (
-    <StatRow
-      icon={
-        <Ring
-          arcs={[
-            { share: share(counts.successful), className: TONE.success },
-            { share: share(counts.failing), className: TONE.failure },
-            { share: share(counts.pending + counts.actionRequired), className: TONE.pending },
-            { share: share(counts.skipped + counts.neutral), className: TONE.muted },
-          ]}
-        />
-      }
-      title={title}
-      detail={
-        parts.length === 0
-          ? gt("CI/CD")
-          : gt("{list} {count, plural, one {check} other {checks}}", {
-              list: parts.join(", "),
-              count: total,
-            })
-      }
-      url={url}
-      onOpen={onOpen}
+  const value = {
+    conflicting: gt("Conflict"),
+    failing: gt("{count} failed", { count: counts.failing }),
+    pending: gt("{count} running", { count: counts.pending + counts.actionRequired }),
+    passing: gt("Passed"),
+    none: "-",
+  }[checks.state];
+  const valueTone: Tone = {
+    conflicting: "failure",
+    failing: "failure",
+    pending: "pending",
+    passing: "success",
+    none: "muted",
+  }[checks.state] as Tone;
+  return {
+    icon: (
+      <Ring
+        arcs={[
+          { share: share(counts.successful), className: TONE.success },
+          { share: share(counts.failing), className: TONE.failure },
+          { share: share(counts.pending + counts.actionRequired), className: TONE.pending },
+          { share: share(counts.skipped + counts.neutral), className: TONE.muted },
+        ]}
+      />
+    ),
+    label: gt("CI/CD"),
+    value,
+    valueTone,
+    title,
+    detail:
+      parts.length === 0
+        ? gt("CI/CD")
+        : gt("{list} {count, plural, one {check} other {checks}}", {
+            list: parts.join(", "),
+            count: total,
+          }),
+    url,
+  };
+}
+
+function localCiStat(gt: ReturnType<typeof useGT>, startedAt: number): Stat {
+  return {
+    icon: (
+      <span className={cn("inline-flex shrink-0", TONE.pending)}>
+        <Spinner size="md" />
+      </span>
+    ),
+    label: gt("CI/CD"),
+    value: <RunClock since={startedAt} />,
+    valueTone: "pending",
+    title: gt("Local CI/CD running"),
+    detail: <RunClock since={startedAt} />,
+    url: null,
+  };
+}
+
+function deploymentStat(
+  gt: ReturnType<typeof useGT>,
+  deployment: PullRequestDeployment,
+  headSha: string | undefined,
+): Stat {
+  const { environment, state } = deployment;
+  const created = Date.parse(deployment.createdAt);
+  const finished = deployment.finishedAt === null ? null : Date.parse(deployment.finishedAt);
+  const clock = Number.isNaN(created) ? (
+    "-"
+  ) : (
+    <RunClock
+      since={created}
+      until={finished !== null && !Number.isNaN(finished) ? finished : null}
     />
   );
-}
-
-function stackedOnLabel(children: BaseSummary["children"]) {
-  return children.map((child) => `#${child.number}`).join(", ");
-}
-
-function BaseRow({
-  base,
-  loading,
-  baseBranch,
-  compareUrl,
-  onOpen,
-}: {
-  base: BaseSummary | null;
-  loading: boolean;
-  baseBranch: string;
-  compareUrl: string;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
-}) {
-  const gt = useGT();
-  const target = base?.parent ? `#${base.parent.number}` : baseBranch;
   const tone: Tone =
-    base === null || base.state === "unknown"
-      ? "muted"
-      : base.state === "current"
+    state === "running"
+      ? "pending"
+      : state === "success"
         ? "success"
-        : "pending";
-  const title =
-    base === null
-      ? gt("Base")
-      : base.state === "current"
-        ? gt("Up to date with {target}", { target })
-        : base.state === "behind"
-          ? gt(
-              "{count, plural, one {{formatted} commit behind {target}} other {{formatted} commits behind {target}}}",
-              {
-                count: base.behindBy ?? 0,
-                formatted: (base.behindBy ?? 0).toLocaleString(),
-                target,
-              },
-            )
-          : gt("Can't compare with {target}", { target });
+        : state === "failure"
+          ? "failure"
+          : "muted";
   const notes = [
-    base?.parent ? baseBranch : gt("Base branch"),
-    base !== null && base.children.length > 0
-      ? gt("{list} stacked on this", { list: stackedOnLabel(base.children) })
-      : null,
+    state === "inactive" ? gt("replaced by a newer deployment") : null,
+    isSameCommit(deployment.sha, headSha) === false ? gt("older commit") : null,
   ].filter((note) => note !== null);
-  return (
-    <StatRow
-      icon={
-        loading ? (
-          <Spinner size="md" tone="muted" />
-        ) : (
-          <GitBranchIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
-        )
-      }
-      title={title}
-      detail={loading ? gt("Loading...") : notes.join(" · ")}
-      url={base?.state === "behind" ? compareUrl : null}
-      onOpen={onOpen}
-    />
-  );
-}
-
-function StackRow({
-  base,
-  onOpen,
-}: {
-  base: BaseSummary & { readonly parent: NonNullable<BaseSummary["parent"]> };
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
-}) {
-  const gt = useGT();
-  const { parent } = base;
-  const tone: Tone =
-    base.stack === "open" ? "success" : base.stack === "merged" ? "pending" : "failure";
-  const detail =
-    base.stack === "open"
-      ? parent.isDraft
-        ? gt("Draft", { $context: "parent pull request status" })
-        : gt("Open", { $context: "parent pull request status" })
-      : base.stack === "merged"
-        ? gt("Merged - move this PR to {baseBranch}", { baseBranch: parent.baseBranch })
-        : gt("Closed without merging");
-  return (
-    <StatRow
-      icon={<LayersIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />}
-      title={gt("Stacked on #{number}", { number: parent.number })}
-      detail={detail}
-      url={parent.url}
-      onOpen={onOpen}
-    />
-  );
+  return {
+    icon:
+      state === "running" ? (
+        <span className={cn("inline-flex shrink-0", TONE.pending)}>
+          <Spinner size="md" />
+        </span>
+      ) : (
+        <RocketIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
+      ),
+    label: gt("Deploy"),
+    value: clock,
+    valueTone: tone,
+    title: {
+      running: gt("Deploying to {environment}", { environment }),
+      success: gt("Deployed to {environment}", { environment }),
+      failure: gt("Deployment to {environment} failed", { environment }),
+      inactive: gt("Deployed to {environment}", { environment }),
+    }[state],
+    detail: (
+      <>
+        {state === "running" ? gt("Running for") : gt("Took")} {clock}
+        {notes.length > 0 ? ` · ${notes.join(" · ")}` : null}
+      </>
+    ),
+    url: deployment.url,
+  };
 }
 
 // The QA report's status colours, in its worst-to-best order.
@@ -357,27 +337,22 @@ const QA_STATUS_TONE = {
 } as const satisfies Record<QaLedgerStatus, string>;
 const QA_RING_ORDER = ["pass", "partial", "fail", "blocked", "waiting", "not_run"] as const;
 
-function QaRow({
-  ledger,
-  loading,
-  headSha,
-}: {
-  ledger: QaLedgerSummary | null;
-  loading: boolean;
-  headSha: string | undefined;
-}) {
-  const gt = useGT();
-  const noop = () => undefined;
+function qaStat(
+  gt: ReturnType<typeof useGT>,
+  ledger: QaLedgerSummary | null,
+  loading: boolean,
+  headSha: string | undefined,
+): Stat {
   if (ledger === null) {
-    return (
-      <StatRow
-        icon={loading ? <Spinner size="md" tone="muted" /> : <Ring arcs={[]} />}
-        title={gt("QA")}
-        detail={loading ? gt("Loading...") : gt("No QA results yet")}
-        url={null}
-        onOpen={noop}
-      />
-    );
+    return {
+      icon: loading ? <Spinner size="md" tone="muted" /> : <Ring arcs={[]} />,
+      label: gt("QA"),
+      value: "-",
+      valueTone: "muted",
+      title: gt("QA"),
+      detail: loading ? gt("Loading...") : gt("No QA results yet"),
+      url: null,
+    };
   }
   const qa = summarizeQaLedger(ledger.counts);
   const labels: Record<QaLedgerStatus, string> = {
@@ -401,51 +376,57 @@ function QaRow({
         : qa.state === "running"
           ? QA_STATUS_TONE.waiting
           : QA_STATUS_TONE.partial;
-  return (
-    <StatRow
-      icon={
-        <Ring
-          arcs={QA_RING_ORDER.map((status) => ({
-            share: qa.total === 0 ? 0 : ledger.counts[status] / qa.total,
-            className: QA_STATUS_TONE[status],
-          }))}
-        />
-      }
-      title={
-        <>
-          {gt("QA")}{" "}
-          <span className={cn("tabular-nums", levelTone)}>
-            {qa.passed}/{qa.total}
-          </span>{" "}
-          {qa.state === "passing"
-            ? gt("passing", { $context: "QA level: every check passed" })
-            : qa.state === "failing"
-              ? gt("failing", { $context: "QA level: some checks failed" })
-              : qa.state === "running"
-                ? gt("running", { $context: "QA level: checks are being tested now" })
-                : gt("incomplete", { $context: "QA level: some checks not run yet" })}
-        </>
-      }
-      detail={
-        <>
-          {shown.map((status, index) => (
-            <span key={status}>
-              {index > 0 ? " · " : null}
-              <span className={cn("tabular-nums", QA_STATUS_TONE[status])}>{labels[status]}</span>
-            </span>
-          ))}
-          {stale ? (
-            <>
-              {shown.length > 0 ? " · " : null}
-              {gt("older commit")}
-            </>
-          ) : null}
-        </>
-      }
-      url={null}
-      onOpen={noop}
-    />
-  );
+  const level =
+    qa.state === "passing"
+      ? gt("passing", { $context: "QA level: every check passed" })
+      : qa.state === "failing"
+        ? gt("failing", { $context: "QA level: some checks failed" })
+        : qa.state === "running"
+          ? gt("running", { $context: "QA level: checks are being tested now" })
+          : gt("incomplete", { $context: "QA level: some checks not run yet" });
+  return {
+    icon: (
+      <Ring
+        arcs={QA_RING_ORDER.map((status) => ({
+          share: qa.total === 0 ? 0 : ledger.counts[status] / qa.total,
+          className: QA_STATUS_TONE[status],
+        }))}
+      />
+    ),
+    label: gt("QA"),
+    value: (
+      <span className={cn("tabular-nums", levelTone)}>
+        {qa.passed}/{qa.total}
+      </span>
+    ),
+    valueTone: null,
+    title: (
+      <>
+        {gt("QA")}{" "}
+        <span className={cn("tabular-nums", levelTone)}>
+          {qa.passed}/{qa.total}
+        </span>{" "}
+        {level}
+      </>
+    ),
+    detail: (
+      <>
+        {shown.map((status, index) => (
+          <span key={status}>
+            {index > 0 ? " · " : null}
+            <span className={cn("tabular-nums", QA_STATUS_TONE[status])}>{labels[status]}</span>
+          </span>
+        ))}
+        {stale ? (
+          <>
+            {shown.length > 0 ? " · " : null}
+            {gt("older commit")}
+          </>
+        ) : null}
+      </>
+    ),
+    url: null,
+  };
 }
 
 const PRIORITY_TONE: Record<FindingPriority, Tone> = {
@@ -455,16 +436,11 @@ const PRIORITY_TONE: Record<FindingPriority, Tone> = {
   P3: "muted",
 };
 
-function ConductorRow({
-  review,
-  loading,
-  onOpen,
-}: {
-  review: ConductorReview | null;
-  loading: boolean;
-  onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
-}) {
-  const gt = useGT();
+function reviewStat(
+  gt: ReturnType<typeof useGT>,
+  review: ConductorReview | null,
+  loading: boolean,
+): Stat {
   const priorities = (["P0", "P1", "P2", "P3"] as const).filter(
     (priority) => (review?.findings[priority] ?? 0) > 0,
   );
@@ -476,52 +452,161 @@ function ConductorRow({
         : review.total > 0
           ? "pending"
           : "success";
-  const icon =
-    loading || review?.reviewing ? (
-      <Spinner size="md" tone="muted" />
-    ) : (
-      <ScanSearchIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
-    );
   const findings =
-    review === null || !review.hasResult ? null : priorities.length === 0 ? (
-      gt("No findings")
-    ) : (
-      <>
-        {priorities.map((priority, index) => (
-          <span key={priority}>
-            {index > 0 ? " · " : null}
-            <span className={cn("tabular-nums", TONE[PRIORITY_TONE[priority]])}>
-              {review.findings[priority]} {priority}
+    review === null || !review.hasResult
+      ? null
+      : priorities.length === 0
+        ? gt("No findings")
+        : priorities.map((priority) => (
+            <span key={priority} className={cn("tabular-nums", TONE[PRIORITY_TONE[priority]])}>
+              {review.findings[priority]} {priority}{" "}
             </span>
-          </span>
-        ))}
-      </>
-    );
+          ));
   const notes = [
     review?.reviewing ? gt("Reviewing...") : null,
     review?.current === false ? gt("older commit") : null,
   ].filter((note) => note !== null);
+  return {
+    icon:
+      loading || review?.reviewing ? (
+        <Spinner size="md" tone="muted" />
+      ) : (
+        <ScanSearchIcon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
+      ),
+    label: gt("Review"),
+    value: loading
+      ? "-"
+      : findings === null
+        ? "-"
+        : priorities.length === 0
+          ? gt("Clean")
+          : findings,
+    valueTone: priorities.length === 0 ? tone : null,
+    title: gt("Conductor review"),
+    detail: loading ? (
+      gt("Loading...")
+    ) : findings === null && notes.length === 0 ? (
+      gt("Not reviewed yet")
+    ) : (
+      <>
+        {findings}
+        {findings !== null && notes.length > 0 ? " · " : null}
+        {notes.join(" · ")}
+      </>
+    ),
+    url: review?.url ?? null,
+  };
+}
+
+/**
+ * The base on one line: the parent PR and how far behind it when stacked, else the base branch.
+ * Hovering or clicking shows the comparison, the parent's state and what is stacked on this PR.
+ */
+function BaseLine({
+  base,
+  loading,
+  baseBranch,
+  compareUrl,
+  onOpen,
+}: {
+  base: BaseSummary | null;
+  loading: boolean;
+  baseBranch: string;
+  compareUrl: string;
+  onOpen: OpenLink;
+}) {
+  const gt = useGT();
+  const parent = base?.parent ?? null;
+  const target = parent ? `#${parent.number}` : baseBranch;
+  // A stacked PR's parent that merged or closed needs attention before the commit count does.
+  const tone: Tone =
+    base === null || base.state === "unknown"
+      ? "muted"
+      : base.stack === "closed"
+        ? "failure"
+        : base.stack === "merged" || base.state === "behind"
+          ? "pending"
+          : "success";
+  const behind =
+    base === null || loading
+      ? null
+      : base.state === "current"
+        ? gt("up to date")
+        : base.state === "behind"
+          ? gt("{formatted} behind", { formatted: (base.behindBy ?? 0).toLocaleString() })
+          : null;
+  const title =
+    base === null
+      ? gt("Base")
+      : base.state === "current"
+        ? gt("Up to date with {target}", { target })
+        : base.state === "behind"
+          ? gt(
+              "{count, plural, one {{formatted} commit behind {target}} other {{formatted} commits behind {target}}}",
+              {
+                count: base.behindBy ?? 0,
+                formatted: (base.behindBy ?? 0).toLocaleString(),
+                target,
+              },
+            )
+          : gt("Can't compare with {target}", { target });
+  const parentState =
+    parent === null || base === null
+      ? null
+      : base.stack === "open"
+        ? parent.isDraft
+          ? gt("Draft", { $context: "parent pull request status" })
+          : gt("Open", { $context: "parent pull request status" })
+        : base.stack === "merged"
+          ? gt("Merged - move this PR to {baseBranch}", { baseBranch: parent.baseBranch })
+          : gt("Closed without merging");
+  const detail = [
+    parent ? gt("Stacked on #{number}", { number: parent.number }) : gt("Base branch"),
+    parent ? baseBranch : null,
+    parentState,
+    base !== null && base.children.length > 0
+      ? gt("{list} stacked on this", { list: stackedOnLabel(base.children) })
+      : null,
+  ].filter((note) => note !== null);
+  const Icon = parent ? LayersIcon : GitBranchIcon;
+  const stat: Stat = {
+    icon: null,
+    label: gt("Base"),
+    value: null,
+    valueTone: null,
+    title,
+    detail: detail.join(" · "),
+    url: base?.state === "behind" ? compareUrl : (parent?.url ?? null),
+  };
   return (
-    <StatRow
-      icon={icon}
-      title={gt("Conductor review")}
-      detail={
-        loading ? (
-          gt("Loading...")
-        ) : findings === null && notes.length === 0 ? (
-          gt("Not reviewed yet")
+    <StatCard stat={stat} onOpen={onOpen} layout="line">
+      <span className="inline-flex size-4 shrink-0 items-center justify-center">
+        {loading ? (
+          <Spinner size="md" tone="muted" />
         ) : (
-          <>
-            {findings}
-            {findings !== null && notes.length > 0 ? " · " : null}
-            {notes.join(" · ")}
-          </>
-        )
-      }
-      url={review?.url ?? null}
-      onOpen={onOpen}
-    />
+          <Icon aria-hidden className={cn("size-4 shrink-0", TONE[tone])} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground/80">
+        {target}
+        {behind === null ? null : (
+          <span
+            className={cn(
+              "font-normal",
+              base?.state === "behind" ? TONE.pending : "text-muted-foreground",
+            )}
+          >
+            {" · "}
+            {behind}
+          </span>
+        )}
+      </span>
+    </StatCard>
   );
+}
+
+function stackedOnLabel(children: BaseSummary["children"]) {
+  return children.map((child) => `#${child.number}`).join(", ");
 }
 
 /** PR happy: CI/CD checks, the QA level and Conductor's findings for the current pull request. */
@@ -632,41 +717,41 @@ export function ThreadDetailsPrHappy({
   const loading = activity === null;
   const base = baseQuery.data ? summarizeBase(baseQuery.data) : null;
   const repositoryUrl = detail.url.replace(/\/pull\/\d+\/?$/, "");
+  const stats = [
+    localCiQuery.data
+      ? localCiStat(gt, localCiQuery.data.startedAt)
+      : checksStat(
+          gt,
+          summarizeChecks(detail.checks, detail.mergeability === "conflicting"),
+          `${detail.url}/checks`,
+        ),
+    qaStat(
+      gt,
+      ledgerQuery.data ?? null,
+      ledgerQuery.isPending && ledgerQuery.data === null,
+      detail.headSha,
+    ),
+    reviewStat(gt, summarizeConductorReview(comments, detail.headSha), loading),
+    ...(deploymentQuery.data ? [deploymentStat(gt, deploymentQuery.data, detail.headSha)] : []),
+  ];
   return (
     <div data-thread-details-pr-happy className="flex flex-col pb-1">
       <div className="px-2.5 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground select-none">
         {gt("PR happy")}
       </div>
-      <BaseRow
+      <BaseLine
         base={base}
         loading={baseQuery.isPending && baseQuery.data === null}
         baseBranch={detail.baseBranch}
         compareUrl={`${repositoryUrl}/compare/${detail.headBranch}...${detail.baseBranch}`}
         onOpen={onOpen}
       />
-      {base?.parent ? <StackRow base={{ ...base, parent: base.parent }} onOpen={onOpen} /> : null}
-      {localCiQuery.data ? (
-        <LocalCiRow startedAt={localCiQuery.data.startedAt} />
-      ) : (
-        <ChecksRow
-          checks={summarizeChecks(detail.checks, detail.mergeability === "conflicting")}
-          url={`${detail.url}/checks`}
-          onOpen={onOpen}
-        />
-      )}
-      {deploymentQuery.data ? (
-        <DeploymentRow deployment={deploymentQuery.data} headSha={detail.headSha} onOpen={onOpen} />
-      ) : null}
-      <QaRow
-        ledger={ledgerQuery.data ?? null}
-        loading={ledgerQuery.isPending && ledgerQuery.data === null}
-        headSha={detail.headSha}
-      />
-      <ConductorRow
-        review={summarizeConductorReview(comments, detail.headSha)}
-        loading={loading}
-        onOpen={onOpen}
-      />
+      <div className={cn("grid gap-0.5", stats.length === 4 ? "grid-cols-2" : "grid-cols-3")}>
+        {stats.map((stat, index) => (
+          // oxlint-disable-next-line react/no-array-index-key -- the tiles are positional and never reorder
+          <StatTile key={index} stat={stat} onOpen={onOpen} />
+        ))}
+      </div>
     </div>
   );
 }
