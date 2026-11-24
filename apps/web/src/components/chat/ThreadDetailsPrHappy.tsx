@@ -687,7 +687,11 @@ export function ThreadDetailsPrHappy({
   const deploymentQuery = useEnvironmentQuery(
     serverEnvironment.pullRequestDeployment({
       environmentId,
-      input: { repository: reference.repository, headBranch: detail.headBranch },
+      input: {
+        repository: reference.repository,
+        headBranch: detail.headBranch,
+        number: reference.number,
+      },
     }),
   );
   useLiveRefresh(

@@ -1,14 +1,19 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const PullRequestDeploymentInput = Schema.Struct({
   repository: TrimmedNonEmptyString,
   headBranch: TrimmedNonEmptyString,
+  /**
+   * The pull request, for a deploy GitHub records under another branch (one started by hand, as a
+   * stacked PR's is): its status comment then says how far that deploy has got.
+   */
+  number: Schema.optionalKey(PositiveInt),
 });
 export type PullRequestDeploymentInput = typeof PullRequestDeploymentInput.Type;
 
-/** The newest GitHub deployment of a pull request's head branch. */
+/** The newest GitHub deployment of a pull request's head branch, or its PR environment status comment. */
 export const PullRequestDeployment = Schema.Struct({
   environment: TrimmedNonEmptyString,
   sha: TrimmedNonEmptyString,
