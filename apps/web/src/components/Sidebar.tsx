@@ -11,6 +11,9 @@ import {
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
+import { requestFolderName } from "./FolderNameDialog";
+import { SidebarUserFolderHeader, sidebarUserFolderRowId } from "./sidebar/SidebarUserFolderHeader";
+import { useThreadFoldersStore, type ThreadFolder } from "../threadFoldersStore";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
@@ -58,6 +61,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   AuthOrchestrationOperateScope,
+  type ContextMenuItem,
   type ContextMenuSource,
   ProjectId,
   type ScopedThreadRef,
@@ -178,6 +182,7 @@ import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
+  type ThreadActionMenuId,
 } from "./threadActionMenu.logic";
 import {
   applySidebarThreadDrop,
@@ -2640,6 +2645,95 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
 
+  const userFolders = useThreadFoldersStore((state) => state.folders);
+  const folderByThread = useThreadFoldersStore((state) => state.folderByThread);
+  const toggleUserFolder = useThreadFoldersStore((state) => state.toggleFolder);
+  /** The thread menu's "Move to folder" submenu. */
+  const threadFolderMenuItem = (threadKey: string): ContextMenuItem<ThreadActionMenuId> => {
+    const current = folderByThread[threadKey] ?? null;
+    return {
+      id: "folder-new",
+      label: gt("Move to folder"),
+      separatorBefore: true,
+      children: [
+        ...userFolders.map((folder) => ({
+          id: `folder:${folder.id}` as const,
+          label: folder.name,
+          checked: folder.id === current,
+        })),
+        {
+          id: "folder-new" as const,
+          label: gt("New folder…"),
+          separatorBefore: userFolders.length > 0,
+        },
+        ...(current === null
+          ? []
+          : [{ id: "folder-remove" as const, label: gt("Remove from folder") }]),
+      ],
+    };
+  };
+  /** Handles a folder choice from a thread menu; true when the choice was one. */
+  const applyThreadFolderAction = async (
+    action: ThreadActionMenuId,
+    threadKeys: ReadonlyArray<string>,
+  ): Promise<boolean> => {
+    const store = useThreadFoldersStore.getState();
+    if (action === "folder-remove") {
+      store.moveThreads(threadKeys, null);
+      return true;
+    }
+    if (action === "folder-new") {
+      const name = await requestFolderName("create");
+      if (name !== null) store.moveThreads(threadKeys, store.createFolder(name));
+      return true;
+    }
+    if (action.startsWith("folder:")) {
+      store.moveThreads(threadKeys, action.slice("folder:".length));
+      return true;
+    }
+    return false;
+  };
+  const handleUserFolderContextMenu = useStableCallback(
+    (folder: ThreadFolder, position: { x: number; y: number }, source: ContextMenuSource) => {
+      const api = readLocalApi();
+      if (!api) return;
+      void (async () => {
+        const clicked = await settlePromise(() =>
+          api.contextMenu.show(
+            [
+              { id: "rename", label: gt("Rename folder"), icon: "pencil" },
+              { id: "new", label: gt("New folder…") },
+              {
+                id: "delete",
+                label: gt("Delete folder"),
+                destructive: true,
+                separatorBefore: true,
+              },
+            ],
+            position,
+            source,
+          ),
+        );
+        if (clicked._tag === "Failure") return;
+        const store = useThreadFoldersStore.getState();
+        switch (clicked.value) {
+          case "rename": {
+            const name = await requestFolderName("rename", folder.name);
+            if (name !== null) store.renameFolder(folder.id, name);
+            return;
+          }
+          case "new": {
+            const name = await requestFolderName("create");
+            if (name !== null) store.createFolder(name);
+            return;
+          }
+          case "delete":
+            store.deleteFolder(folder.id);
+            return;
+        }
+      })();
+    },
+  );
   const handleThreadContextMenu = useStableCallback(
     (
       threadRef: ScopedThreadRef,
@@ -2728,12 +2822,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 titleRegeneration: configLoaded,
               },
               snoozePresets,
-            }),
+            }).concat(threadFolderMenuItem(threadKey)),
             position,
             source,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
+        if (await applyThreadFolderAction(clicked.value, [threadKey])) return;
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
@@ -3614,7 +3709,35 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           onDraftContextMenu={handleDraftContextMenu}
                         />,
                       ];
+                      // Threads the user filed in a folder show under it, above everything else.
+                      for (const folder of userFolders) {
+                        const folderThreads = searchableThreads.filter(
+                          (thread) => folderByThread[threadShellKey(thread)] === folder.id,
+                        );
+                        items.push(
+                          <SidebarUserFolderHeader
+                            key={`user-folder:${folder.id}`}
+                            folder={folder}
+                            threadCount={folderThreads.length}
+                            onToggle={toggleUserFolder}
+                            onContextMenu={handleUserFolderContextMenu}
+                          />,
+                        );
+                        if (folder.collapsed) continue;
+                        for (const thread of folderThreads) {
+                          items.push(
+                            renderThreadRow(
+                              thread,
+                              sectionByThreadKey.get(threadShellKey(thread)) ?? "active",
+                              sidebarUserFolderRowId(folder.id),
+                            ),
+                          );
+                        }
+                      }
                       for (const item of sidebarListItems) {
+                        if (item.kind === "thread" && folderByThread[item.key] !== undefined) {
+                          continue;
+                        }
                         if (item.kind === "thread") {
                           // Folders draw active rows in their own place below.
                           if (projectFolders !== null && item.section === "active") continue;
@@ -3635,6 +3758,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               />,
                             );
                             for (const thread of folder.threads) {
+                              if (folderByThread[threadShellKey(thread)] !== undefined) continue;
                               items.push(
                                 renderThreadRow(
                                   thread,

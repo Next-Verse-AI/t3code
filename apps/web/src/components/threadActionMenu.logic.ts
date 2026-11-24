@@ -30,7 +30,10 @@ export type ThreadActionMenuId =
   | "copy-thread"
   | "copy-thread-id"
   | "archive"
-  | "delete";
+  | "delete"
+  | `folder:${string}`
+  | "folder-new"
+  | "folder-remove";
 
 export type DraftActionMenuId =
   | "copy"
